@@ -1,0 +1,2 @@
+include cbpi4-boilstep-hlt/config.yaml
+recursive-include cbpi4-boilstep-hlt/static *
