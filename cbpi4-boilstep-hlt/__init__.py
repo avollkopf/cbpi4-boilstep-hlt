@@ -22,9 +22,9 @@ import warnings
              Property.Number(label="Temp", configurable=True),
              Property.Sensor(label="Sensor", description="Temp Sensor Mash Kettle"),
              Property.Kettle(label="Kettle", description="Mash Kettle"),
-             Property.Sensor(label="Sensor2", description="Temp Sensor Sparge Water Kettle"),
-            Property.Number(label="Temp2", description="Target Temp for Sparge Water Kettle", configurable=True),
-             Property.Kettle(label="Kettle2", description="Sparge Water Kettle"),
+             Property.Sensor(label="Sensor2", description="Temp Sensor HLT Kettle"),
+            Property.Number(label="Temp2", description="Target Temp for HLT Kettle", configurable=True),
+             Property.Kettle(label="Kettle2", description="HLT Kettle"),
              Property.Select(label="AutoMode",options=["Yes","No"], description="Switch Kettlelogic automatically on and off -> Yes")])
 class MashStepHLT(CBPiStep):
 
