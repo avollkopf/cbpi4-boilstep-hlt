@@ -307,6 +307,111 @@ class BoilStepHLT(CBPiStep):
             logging.error("Failed to switch on KettleLogic {} {}".format(self.kettle.id, e))        
 
 
+@parameters([Property.Number(label="Temp", configurable=True, description = "Ramp to this temp"),
+             Property.Number(label="RampRate", configurable=True, description = "Ramp x °C/F per minute. Default: 1"),
+             Property.Kettle(label="Kettle",description="Kettle"),
+             Property.Sensor(label="Sensor", description="Temperature Sensor"),
+             Property.Text(label="Notification",configurable = True, description = "Text for notification when Temp is reached"),
+             Property.Select(label="AutoMode",options=["Yes","No"], description="Switch Fermenterlogic automatically on and off -> Yes")])
+class RampTempStep(CBPiStep):
+
+    async def NextStep(self, **kwargs):
+        if self.shutdown == False:
+            await self.next()
+            return StepResult.DONE
+        
+    async def on_timer_done(self,timer):
+        self.summary = ""
+        await self.push_update()
+        if self.AutoMode == True:
+            await self.setAutoMode(False)
+        self.cbpi.notify(self.name, self.props.get("Notification","Ramp to Target Temp reached."))
+        await self.next()
+        return StepResult.DONE
+        
+
+    async def on_timer_update(self,timer, seconds):
+        await self.push_update()
+
+    async def on_start(self):
+        self.AutoMode = True if self.props.get("AutoMode","No") == "Yes" else False
+        self.kettle=self.get_kettle(self.props.get("Kettle", None))
+        self.rate=float(self.props.get("RampRate",1))
+        logging.info(self.rate)
+        self.target_temp = round(float(self.props.get("Temp", 0))*10)/10
+        logging.info(self.target_temp)
+        while self.get_sensor_value(self.props.get("Sensor", None)).get("value") > 900:
+            await asyncio.sleep(1)
+        self.starttemp = self.get_sensor_value(self.props.get("Sensor", None)).get("value")
+
+        self.current_target_temp = self.starttemp
+        if self.kettle is not None:
+            self.kettle.target_temp = self.current_target_temp
+        if self.AutoMode == True:
+            await self.setAutoMode(True)
+        self.summary = "Ramping to {}° with {}° per minute".format(self.target_temp,self.rate)
+        if self.kettle is not None and self.timer is None:
+            self.timer = Timer(1 ,on_update=self.on_timer_update, on_done=self.on_timer_done)
+        await self.push_update()
+
+    async def on_stop(self):
+        await self.timer.stop()
+        self.summary = ""
+        if self.AutoMode == True:
+            await self.setAutoMode(False)
+        await self.push_update()
+
+    async def calc_target_temp(self):
+        delta_time = time.time() - self.starttime
+        current_target_temp = round((self.starttemp + delta_time * self.ratesecond)*10)/10
+        if current_target_temp != self.current_target_temp:
+            self.current_target_temp = current_target_temp
+            await self.kettle.target_temp=current_target_temp
+            await self.push_update()
+
+        pass
+
+    async def run(self): 
+        self.delta_temp = self.target_temp-self.starttemp
+        try:
+            self.delta_minutes = abs(self.delta_temp / self.rate)
+            self.deltaseconds = self.delta_minutes * 60
+            self.ratesecond = self.delta_temp/self.deltaseconds
+        except Exception as e:
+            logging.info(e)
+        self.starttime=time.time()
+        
+        if self.target_temp >= self.starttemp:
+            logging.info("warmup")
+            while self.running == True:
+                if self.current_target_temp != self.target_temp:
+                    await self.calc_target_temp()
+                sensor_value = self.get_sensor_value(self.props.get("Sensor", None)).get("value")
+                if sensor_value >= self.target_temp and self.timer.is_running is not True:
+                    self.timer.start()
+                    self.timer.is_running = True
+                await asyncio.sleep(1)
+        else:
+            logging.info("Temp is higher than target")
+            await asyncio.sleep(1)
+        
+        await self.push_update()
+        return StepResult.DONE
+
+    async def reset(self):
+        self.timer = Timer(1 ,on_update=self.on_timer_update, on_done=self.on_timer_done)
+        self.timer.is_running == False
+
+    async def setAutoMode(self, auto_state):
+        try:
+            if (self.kettle.instance is None or self.kettle.instance.state == False) and (auto_state is True):
+                await self.cbpi.kettle.toggle(self.kettle.id)
+            elif (self.kettle.instance.state == True) and (auto_state is False):
+                await self.kettle.instance.stop()
+            await self.push_update()
+
+        except Exception as e:
+            logging.error("Failed to switch on Kettlelogic {} {}".format(self.kettle.id, e))
 
 
 def setup(cbpi):
@@ -320,4 +425,5 @@ def setup(cbpi):
 
     cbpi.plugin.register("BoilStep-HLT", BoilStepHLT)
     cbpi.plugin.register("MashStep-HLT", MashStepHLT)
+    cbpi.plugin.register("RampTempStep", RampTempStep)
 
