@@ -366,7 +366,7 @@ class RampTempStep(CBPiStep):
         current_target_temp = round((self.starttemp + delta_time * self.ratesecond)*10)/10
         if current_target_temp != self.current_target_temp:
             self.current_target_temp = current_target_temp
-            await self.kettle.target_temp=current_target_temp
+            self.kettle.target_temp = current_target_temp
             await self.push_update()
 
         pass
