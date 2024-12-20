@@ -309,6 +309,7 @@ class BoilStepHLT(CBPiStep):
 
 @parameters([Property.Number(label="Temp", configurable=True, description = "Ramp to this temp"),
              Property.Number(label="RampRate", configurable=True, description = "Ramp x °C/F per minute. Default: 1"),
+             Property.Number(label="MaxDelta", configurable=True, description = "Max Delta between Temp reading and floating target temp. Default: 0.5"),
              Property.Kettle(label="Kettle",description="Kettle"),
              Property.Sensor(label="Sensor", description="Temperature Sensor"),
              Property.Text(label="Notification",configurable = True, description = "Text for notification when Temp is reached"),
@@ -337,6 +338,7 @@ class RampTempStep(CBPiStep):
         self.AutoMode = True if self.props.get("AutoMode","No") == "Yes" else False
         self.kettle=self.get_kettle(self.props.get("Kettle", None))
         self.rate=float(self.props.get("RampRate",1))
+        self.maxdelta=float(self.props.get("MaxDelta",0.5))
         logging.info(self.rate)
         self.target_temp = round(float(self.props.get("Temp", 0))*10)/10
         logging.info(self.target_temp)
@@ -371,7 +373,7 @@ class RampTempStep(CBPiStep):
 
         pass
 
-    async def run(self): 
+    async def calc_rate(self):
         self.delta_temp = self.target_temp-self.starttemp
         try:
             self.delta_minutes = abs(self.delta_temp / self.rate)
@@ -380,16 +382,28 @@ class RampTempStep(CBPiStep):
         except Exception as e:
             logging.info(e)
         self.starttime=time.time()
+
+
+    async def run(self): 
+        await self.calc_rate()
         
         if self.target_temp >= self.starttemp:
             logging.info("warmup")
             while self.running == True:
-                if self.current_target_temp != self.target_temp:
-                    await self.calc_target_temp()
                 sensor_value = self.get_sensor_value(self.props.get("Sensor", None)).get("value")
+                deltatemp = self.current_target_temp - sensor_value
+                if deltatemp >= self.maxdelta:
+                    logging.error(deltatemp)
+                    self.starttemp = sensor_value
+                    await self.calc_rate()
+                    pass
+                
+                elif self.current_target_temp != self.target_temp:
+                    await self.calc_target_temp()
                 if sensor_value >= self.target_temp and self.timer.is_running is not True:
                     self.timer.start()
                     self.timer.is_running = True
+
                 await asyncio.sleep(1)
         else:
             logging.info("Temp is higher than target")
