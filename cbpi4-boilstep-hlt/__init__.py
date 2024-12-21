@@ -396,6 +396,7 @@ class RampTempStep(CBPiStep):
                     logging.error(deltatemp)
                     self.starttemp = sensor_value
                     await self.calc_rate()
+                    await self.calc_target_temp()
                     pass
                 
                 elif self.current_target_temp != self.target_temp:
